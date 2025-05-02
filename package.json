@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.738.0",
+    "@aws-sdk/client-sns": "^3.799.0",
     "@aws-sdk/client-sqs": "^3.799.0",
     "@aws-sdk/lib-dynamodb": "^3.738.0",
     "@aws-sdk/util-dynamodb": "^3.738.0",

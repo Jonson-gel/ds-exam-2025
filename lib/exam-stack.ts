@@ -126,14 +126,32 @@ export class ExamStack extends cdk.Stack {
       memorySize: 128,
       environment: {
         REGION: "eu-west-1",
+        TOPIC_ARN: topic1.topicArn,
+        QUEUE_A_URL: queueA.queueUrl,
       },
     });
 
     topic1.addSubscription(new subs.SqsSubscription(queueA));
 
+    topic1.addSubscription(new subs.LambdaSubscription(lambdaYFn));
+
+    topic1.grantPublish(lambdaYFn);
+
     lambdaXFn.addEventSource(new events.SqsEventSource(queueA));
+
+    topic1.addSubscription(
+      new subs.SqsSubscription(queueA, {
+        filterPolicy: {
+          country: sns.SubscriptionFilter.stringFilter({
+            allowlist: ["Ireland", "China"],
+          }),
+        },
+        rawMessageDelivery: true,
+      })
+    );
+
+    queueA.grantSendMessages(lambdaYFn);
 
     queueB.grantSendMessages(lambdaXFn);
   }
 }
-  
