@@ -32,7 +32,7 @@ export class ExamStack extends cdk.Stack {
     // Lambda Function for fetching crew details
     const getCrewDetailsFn = new lambdanode.NodejsFunction(this, "GetCrewDetailsFn", {
       architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_14_X,
+      runtime: lambda.Runtime.NODEJS_20_X,
       entry: `${__dirname}/../lambdas/getCrewDetails.ts`,
       timeout: cdk.Duration.seconds(10),
       memorySize: 128,

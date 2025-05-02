@@ -1,62 +1,85 @@
-import { SNSEvent, SNSHandler } from "aws-lambda";
+import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
-  UpdateCommand,
-  UpdateCommandInput,
+  GetCommand,
+  QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-const ddbDocClient = createDocumentClient();
+const REGION = process.env.REGION;
+const TABLE_NAME = process.env.TABLE_NAME!;
 
-export const handler: SNSHandler = async (event: SNSEvent) => {
-  try {
-    console.log("[SNS EVENT]", JSON.stringify(event));
-
-    for (const record of event.Records) {
-      const message = JSON.parse(record.Sns.Message);
-      console.log("[Parsed Message]", message);
-
-      const { crewId, status, reason } = message;
-
-      if (!crewId || !status) {
-        console.warn("Missing crewId or status in message:", message);
-        continue;
-      }
-
-      const commandInput: UpdateCommandInput = {
-        TableName: process.env.TABLE_NAME!,
-        Key: { crewId },
-        UpdateExpression: "SET #s = :s, #r = :r",
-        ExpressionAttributeNames: {
-          "#s": "status",
-          "#r": "reason",
-        },
-        ExpressionAttributeValues: {
-          ":s": status,
-          ":r": reason ?? null,
-        },
-      };
-
-      await ddbDocClient.send(new UpdateCommand(commandInput));
-      console.log(`Updated crewId ${crewId} with status=${status}, reason=${reason}`);
-    }
-
-    return;
-  } catch (error: any) {
-    console.error("[ERROR]", error);
-    throw new Error("Failed to process SNS message.");
-  }
-};
-
-function createDocumentClient() {
-  const ddbClient = new DynamoDBClient({ region: process.env.REGION });
-  const marshallOptions = {
+const ddbClient = new DynamoDBClient({ region: REGION });
+const ddbDocClient = DynamoDBDocumentClient.from(ddbClient, {
+  marshallOptions: {
     convertEmptyValues: true,
     removeUndefinedValues: true,
-    convertClassInstanceToMap: true,
-  };
-  const unmarshallOptions = { wrapNumbers: false };
-  const translateConfig = { marshallOptions, unmarshallOptions };
+  },
+  unmarshallOptions: {
+    wrapNumbers: false,
+  },
+});
 
-  return DynamoDBDocumentClient.from(ddbClient, translateConfig);
-}
+export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+  const movieId = event.pathParameters?.movieId;
+  const role = event.pathParameters?.role;
+  const verbose = event.queryStringParameters?.verbose === "true";
+
+  if (!movieId || !role) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({
+        message: "Missing required path parameters: role or movieId",
+      }),
+    };
+  }
+
+  try {
+    if (verbose) {
+      const command = new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: "movieId = :movieId",
+        ExpressionAttributeValues: {
+          ":movieId": movieId,
+        },
+      });
+
+      const result = await ddbDocClient.send(command);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          movieId,
+          crew: result.Items || [],
+        }),
+      };
+    } else {
+      const command = new GetCommand({
+        TableName: TABLE_NAME,
+        Key: {
+          movieId,
+          role,
+        },
+      });
+
+      const result = await ddbDocClient.send(command);
+
+      if (!result.Item) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ message: "Crew member not found" }),
+        };
+      }
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify(result.Item),
+      };
+    }
+  } catch (err) {
+    console.error("Error:", err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Internal server error" }),
+    };
+  }
+};
