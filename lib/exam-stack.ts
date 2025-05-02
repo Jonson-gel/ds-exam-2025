@@ -114,6 +114,7 @@ export class ExamStack extends cdk.Stack {
       memorySize: 128,
       environment: {
         REGION: "eu-west-1",
+        QUEUE_B_URL: queueB.queueUrl,
       },
     });
 
@@ -127,7 +128,12 @@ export class ExamStack extends cdk.Stack {
         REGION: "eu-west-1",
       },
     });
-    
+
+    topic1.addSubscription(new subs.SqsSubscription(queueA));
+
+    lambdaXFn.addEventSource(new events.SqsEventSource(queueA));
+
+    queueB.grantSendMessages(lambdaXFn);
   }
 }
   
