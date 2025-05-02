@@ -29,10 +29,11 @@ export class ExamStack extends cdk.Stack {
       tableName: "ExamTable",
     });
 
-    const question1Fn = new lambdanode.NodejsFunction(this, "Question1Fn", {
+    // Lambda Function for fetching crew details
+    const getCrewDetailsFn = new lambdanode.NodejsFunction(this, "GetCrewDetailsFn", {
       architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      entry: `${__dirname}/../lambdas/question1.ts`,
+      runtime: lambda.Runtime.NODEJS_14_X,
+      entry: `${__dirname}/../lambdas/getCrewDetails.ts`,
       timeout: cdk.Duration.seconds(10),
       memorySize: 128,
       environment: {
@@ -50,12 +51,15 @@ export class ExamStack extends cdk.Stack {
             [table.tableName]: generateBatch(movieCrew),
           },
         },
-        physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"), //.of(Date.now().toString()),
+        physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"),
       },
       policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
         resources: [table.tableArn],
       }),
     });
+
+    // Grant Lambda read access to DynamoDB table
+    table.grantReadData(getCrewDetailsFn);
 
     const api = new apig.RestApi(this, "ExamAPI", {
       description: "Exam api",
@@ -70,8 +74,16 @@ export class ExamStack extends cdk.Stack {
       },
     });
 
-    const anEndpoint = api.root.addResource("patha");
+    // Add new endpoint GET /crew/{role}/movies/{movieId}
+    const crewResource = api.root.addResource("crew");
+    const roleResource = crewResource.addResource("{role}");
+    const moviesResource = roleResource.addResource("movies");
+    const movieIdEndpoint = moviesResource.addResource("{movieId}");
 
+    movieIdEndpoint.addMethod(
+      "GET",
+      new apig.LambdaIntegration(getCrewDetailsFn, { proxy: true })
+    );
 
     // ==================================
     // Question 2 - Event-Driven architecture
